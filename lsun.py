@@ -100,9 +100,11 @@ def train(rank, world_size, num_epochs=8):
         setup(rank, world_size)
         logger = setup_logger(rank)
         
-        data_path = './data/lsun'
+        data_path = '/workspace/project/data'
         batch_size = 4
-        img_size = 128
+        img_size = 64
+        latent_dim = (16,16,4)
+        beta = 1
         num_samples = 50000
         mean = (0.5, 0.5, 0.5)
         std = (0.5, 0.5, 0.5)
@@ -134,11 +136,10 @@ def train(rank, world_size, num_epochs=8):
         logger.info("Done!")
 
         # %%
-        latent_dim = (32,32,3)
-        beta = 1
         model = TVQVAE(latent_dim=latent_dim, image_size=img_size, patch_size=2, in_channels=3, hidden_size=768, depth=12, num_heads=6, mlp_ratio=6.0, num_classes=3, dropout_prob=0.1)
         model.to(rank)
         model = DistributedDataParallel(model, device_ids=[rank])
+        logger.info(f"TAKL Parameters: {sum(p.numel() for p in model.parameters()):,}")
         optimizer = optim.Adam(model.parameters(), lr=0.0001)
         
         log_interval = 10
@@ -151,9 +152,7 @@ def train(rank, world_size, num_epochs=8):
             data, y = next(iter(val_loader))
             data = data.to(rank)
             y = y.to(rank)
-            recon_x, _, _ = model(data, y)
-            recon_x = recon_x.cpu()
-            recons = make_grid(torch.clamp(denorm(recon_x, mean, std), 0., 1.), nrow=2, padding=0, normalize=False,
+            recons = make_grid(torch.clamp(denorm(data, mean, std), 0., 1.), nrow=2, padding=0, normalize=False,
                                     range=None, scale_each=False, pad_value=0)
             plt.figure(figsize = (8,8))
             save_image(recons, f'./results/{timestamp}', f"0-{rank}")
@@ -193,7 +192,7 @@ def train(rank, world_size, num_epochs=8):
                     y = y.to(rank)
                     recon_x,  _, _ = model(data, y)
                     recon_x = recon_x.cpu()
-                    recons = make_grid(torch.clamp(denorm(recon_x, mean, std), 0., 1.), nrow=4, padding=0, normalize=False,
+                    recons = make_grid(torch.clamp(denorm(recon_x, mean, std), 0., 1.), nrow=2, padding=0, normalize=False,
                                             range=None, scale_each=False, pad_value=0)
                     plt.figure(figsize = (8,8))
                     save_image(recons, f'./results/{timestamp}', f"{epoch+1}-{rank}")
